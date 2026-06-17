@@ -42,6 +42,12 @@
 RGB                  g_openrgb_direct_mode_colors[RGB_MATRIX_LED_COUNT] = {[0 ... RGB_MATRIX_LED_COUNT - 1] = {OPENRGB_DIRECT_MODE_STARTUP_GREEN, OPENRGB_DIRECT_MODE_STARTUP_RED, OPENRGB_DIRECT_MODE_STARTUP_BLUE}};
 #endif
 
+// Set true by the first host Direct-mode write (see raw_hid_receive). Until then the
+// OPENRGB_DIRECT animation shows a breathing-ESC "loading" indicator instead of the
+// full-buffer default. volatile: written from the raw-HID receive path, read from the
+// RGB render loop.
+volatile bool g_openrgb_host_connected = false;
+
 static const uint8_t openrgb_rgb_matrix_effects_indexes[]           = {
     1,  2,
 
@@ -193,9 +199,11 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             openrgb_set_mode(data);
             break;
         case OPENRGB_DIRECT_MODE_SET_SINGLE_LED:
+            g_openrgb_host_connected = true;
             openrgb_direct_mode_set_single_led(data);
             break;
         case OPENRGB_DIRECT_MODE_SET_LEDS:
+            g_openrgb_host_connected = true;
             openrgb_direct_mode_set_leds(data);
             break;
     }
