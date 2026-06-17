@@ -3,6 +3,7 @@
 
 #include QMK_KEYBOARD_H
 #include "framework.h"
+#include "print.h"   // sendchar() — keypress events over the console HID interface
 
 enum _layers {
   _BASE,
@@ -88,7 +89,26 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 };
 
 // Make sure to keep FN Lock even after reset
+// Keypress -> LEDs: emit a 3-byte frame [0xAB, led_index, pressed] on the CONSOLE HID
+// interface (usage 0xFF31), which is SEPARATE from OpenRGB's raw-HID (0xFF60) — so this
+// never perturbs the LED driver's stream. kbled's KeypressSource reads it to drive per-key
+// reactive effects. led_index is g_led_config's index == the OpenRGB / rgb-matrix index the
+// host paints, so the host needs no row/col table. Always emitted; sendchar drops cheaply
+// when nothing is listening (one ~5 ms stall when its buffer first fills, then instant).
+// 0xAB never collides: led_index is 0..96 and the console pads with 0x00. See
+// spec/docs-cache/qmk-console-channel.md.
+#define KP_EVENT_MAGIC 0xAB
+static void emit_keypress_event(keyrecord_t *record) {
+    if (!IS_KEYEVENT(record->event)) return;
+    uint8_t led = g_led_config.matrix_co[record->event.key.row][record->event.key.col];
+    if (led >= RGB_MATRIX_LED_COUNT) return;   // NO_LED (255), or out of range
+    sendchar(KP_EVENT_MAGIC);
+    sendchar(led);
+    sendchar(record->event.pressed ? 0x01 : 0x00);
+}
+
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    emit_keypress_event(record);
     switch (keycode) {
         case FN_LOCK:
             if (record->event.pressed) {
